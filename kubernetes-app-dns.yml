@@ -1,0 +1,54 @@
+# Defining a Deployment for profileprocessing application
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: profileprocessing-dep
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+       run: profileprocessing
+  template:
+     matchLabels:
+       run: profileprocessing
+     spec: 
+       containers:
+         - name: profileprocessing-c
+           image: hub.docker.hpecorp.net/208885-entitymdm/profileprocessing:latest
+           env:
+              - name: HTTPS_PROXY
+                value: http://web-proxy.corp.hpecorp.net:8080 
+              - name: HTTPS_PROXY
+                value: http://web-proxy.corp.hpecorp.net:8080 
+              - name: http_proxy
+                value: http://web-proxy.corp.hpecorp.net:8080 
+              - name: https_proxy
+                value: http://web-proxy.corp.hpecorp.net:8080 
+           ports:
+              - containerPort: 8081
+                protocol: TCP
+           resources:
+                requests:
+                    memory: "4Gi"
+                    cpu: "200m"
+                limits:
+                    memory: "4Gi"
+                    cpu: "200m"
+           imagePullPolicy: Always
+ ---
+ # Defining a Service to expose the profileprocessing application through NodePort
+apiVersion: v1
+kind: Service
+metadata:
+  name: profileprocessing-svc
+  lables:
+    run: profileprocessing
+spec:
+  ports:
+    - port: 8081
+      name: http
+      protocol: TCP
+      targetPort: 8081
+  type: NodePort
+  selector:
+    run: profileprocessing # all Pods that have a label of run: profileprocessing (template.metadata.lables) will be exposed by the service 
