@@ -1,0 +1,115 @@
+#!groovy
+
+import groovy.json.JsonOutput
+
+def sonarProjectKey = 'profileprocessing-archetype'
+
+def proxyHost = ' -Dhttp.proxyHost=proxy.houston.hpecorp.net -Dhttp.proxyPort=8080 -Dhttps.proxyHost=proxy.houston.hpecorp.net -Dhttps.proxyPort=8080 -Dhttp.nonProxyHosts=\'localhost|d1l00376g.dc01.its.hpecorp.net\''
+def mvnLogLevel = '-Dorg.slf4j.simpleLogger.log.org.apache.maven.cli.transfer.Slf4jMavenTransferListener=warn'
+def tagName = "${env.BRANCH_NAME}-${env.BUILD_ID}"
+
+pipeline {
+    options {
+        buildDiscarder(logRotator(numToKeepStr:'10'))
+        timestamps()
+        ansiColor('xterm')
+        skipDefaultCheckout()
+    }
+    agent {
+        label 'maven-jdk-8'
+    }
+    stages {
+        stage ('Clean Workspace') {
+            steps {
+                deleteDir()
+            }
+        }
+        
+        stage ('Checkout') {
+            steps {
+               checkout scm
+            }
+        }
+        stage ('Test') {
+            steps {
+                echo 'Testing..'
+                sh "mvn clean install -Dcheckstyle.skip=true -B test &{proxyHost} &{mvnLogLevel}"
+            }
+        }
+        stage ('Build') {
+            steps {
+                echo ' Building....'
+                sh "mvn clean install -Dcheckstyle.skip=true -B -DskipTests clean package &{proxyHost} ${mvnLogLevel}"
+            }
+        }
+        stage ('Jacoco code coverage') {
+            steps {
+                jacoco(
+                       execPattern: 'target/*.exec',
+                       classPattern: 'target/classes',
+                       sourcePattern: 'src/main/java',
+                       exclusionPattern: 'src/test*'
+                )
+            }
+        }
+        stage ('SonarQube Analsis') {
+                          steps{
+                                 script{
+                                        projectKey = sonarProjectKey + '_' + env.BRANCH_NAME
+                                        projectName =sonarProjectKey
+                                        projectVersion = '1.0.0'
+                                        sh "sed -i ' s#_PROJECT_KEY_#'${projectKey}'#g' ${env.WORKSPACE}/sonar-project.properties"
+                                        sh "sed -i ' s#_PROJECT_NAME_#'${projectName}'#g' ${env.WORKSPACE}/sonar-project.properties"
+                                        sh "sed -i ' s#_VERSION_#'${projectVersion}'#g' ${env.WORKSPACE}/sonar-project.properties"
+                                 }
+                                 withSonarQubeEnv('EntityMDM-Sonar') {
+                                 sh "mvn sonar:sonar -Dcheckstyle.skip=true ${proxyHost} ${mvnLogLevel}"
+                                 }
+                          }
+        }
+        stage('Docker') {
+            steps {
+               echo 'Uploading to Docker Repo...'
+                               sh "echo 'Tag Number: ${tagName}'"
+               script {
+                   def json = vaultGetSecret()
+                   wrap([$class: 'MaskPasswordsBuildWrapper', varPasswordPairs: [[ password: json.docker_token ]]]){
+                       sh "docker login -u tushar.otia -p ${json.docker_token} hub.docker.hpecorp.net"
+                   }
+                   sh "docker build -t hub.docker.hpecorp.net/20885-entitymdm/profileprocessing:${tagName} ."
+                   sh "docker push hub.docker.hpecorp.net/20885-entitymdm/profileprocessing:${tagName}"
+               }
+            }
+        }
+        stage ('Kubernets') {
+            steps {
+                echo 'Deploying to HPE Ezmeral...'
+                script {
+                    def json = vaultGetSecrets()
+                    wrap([$class: 'MaskPasswordsBuildWrapper', varPasswordPairs: [[ var: 'password', password: json.kube_password ]]]){
+                        sh"""
+                            # Download kube_config file and connect to the Tenant
+                            chmod 755 ./kubeconfig.sh
+                            bash ./kubelogin.sh devops ${json.kube_password} EMDM "https://dashboard-ecp-itg.dc02.its.hpecorp.net:8080"
+                            
+                            # Deploy app on the Tenant
+                            cat ./kubernete-app-dns.yml | sed 's/IMAGETAG/'${tagName}'/g' |kubectl apply -n - -n emdm
+                        """
+                    }
+                }
+            }
+        }
+   }
+   post {
+       success {
+           logstashPush("SUCCESS")
+       }
+       failure {
+           logstashPush("FAILURE")
+       }
+       always {
+           deleteDir()
+       }
+   }
+}
+
