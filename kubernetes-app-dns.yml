@@ -3,80 +3,80 @@ apiVersion: networking.istio.io/v1alpha3
 kind: Gateway
 metadata:
   generation:
-	name: profileprocessing-gateway
-	lables:
-	  run: profileprocessing
+  name: profileprocessing-gateway
+  lables:
+    run: profileprocessing
 spec:
   selector:
-	  istio: ingressgateway                    # Configuring app to use the istio ingress gateway
-	servers:
-	  - hosts:
-		    - profileprocessing-itg.dc02.its.hpecorp.net               # Application DNS
-			port:
-			  name: https
-				number: 443
-				protocol: HTTPs
-			tls:
-			  mode: SIMPLE
-				credentialName: emdmtls #emdm-istio-certs  # This is the Secret configured with application's Private Key and Certificate in istio-system namespace
-				minProtocolVersion: TLSV1_2
-				maxProtocolVersion: TLSV1_2
+    istio: ingressgateway       # Configuring app to use the istio ingress gateway
+  servers:
+    - hosts:
+        - profileprocessing-itg.dc02.its.hpecorp.net       # Application DNS
+      port:
+	name: https
+	number: 443
+	protocol: HTTPs
+      tls:
+	mode: SIMPLE
+	credentialName: emdmtls #emdm-istio-certs  # This is the Secret configured with application's Private Key and Certificate in istio-system namespace
+	minProtocolVersion: TLSV1_2
+	maxProtocolVersion: TLSV1_2
 ---
 apiVersion: networking.istio.io/v1alpha3
 kind: VirtualService
 metadata:
   generation: 1
-	name: profileprocessing-vs
-	lables:
-	  run:profileprocessing
+  name: profileprocessing-vs
+  lables:
+    run: profileprocessing
 spec:
   gateways:
-	  - profileprocessing-gateway
-	hosts:
-	  - profileprocessing-itg.dc02.its.hpecorp.net
-	http:
-	  - match:
-		    - uri:
-				    prefix: /profileprocessing
-			rewrite:
-			  uri: /profileprocessing
-			route:
-			  -destination:
-				   host: profileprocessing-svc            # routes the traffic to profileprocessing application when partylookup-itg.dc02.its.hpecorp.net is accessed
-					 port:
-					   number: 8081
-					 subset: v1
+    - profileprocessing-gateway
+  hosts:
+    - profileprocessing-itg.dc02.its.hpecorp.net
+  http:
+    - match:
+	- uri:
+	    prefix: /profileprocessing
+      rewrite:
+        uri: /profileprocessing
+      route:
+	- destination:
+	    host: profileprocessing-svc            # routes the traffic to profileprocessing application when partylookup-itg.dc02.its.hpecorp.net is accessed
+	    port:
+	      number: 8081
+	    subset: v1
 					 
 ---
 apiVersion: networking.istio.io/v1alpha3
 kind: DestinationRule
 metadata:
   name: profileprocessing-destinationrule
-	lables:
-	  run: profileprocessing
+  lables:
+    run: profileprocessing
 spec:
   host: profileprocessing-svc
-	subsets:
-	  - name: v1
-		  lables:
-			  run: profileprocessing
+  subsets:
+    - name: v1
+      lables:
+        run: profileprocessing
 ---
 # Defining a Service to expose the profileprocessing application through NodePort
 apiVersion: v1
 kind: Service
 metadata:
   name: profileprocessing-svc
-	lables:
-	  run: profileprocessing
+  lables:
+    run: profileprocessing
 spec:
   ports:
-	  - port: 8081
-		  name: http
-			protocol: TCP
-			targetPort: 8081
-	type: NodePort
-	selector:
-	  run: profileprocessing   # all Pods that have a label of run: profileprocessing(template.metadata.lables) will be exposed by the Service.
+    - port: 8081
+      name: http
+      protocol: TCP
+      targetPort: 8081
+  type: NodePort
+  selector:
+     run: profileprocessing   # all Pods that have a label of run: profileprocessing(template.metadata.lables) will be exposed by the Service.
 ---
 # Defining a Deployement for profileprocessing application
 apiVersion: apps/v1
@@ -85,38 +85,34 @@ metadata:
   name: profileprocessing-dep
 spec:
   replicas: 1
-	selector:
-	  matchlables:
-		  run: profileprocessing         # selector.matchlables field selects those pods with that label to belong to  this deployement resource.
-	template:
-	  metadata:
-		  lables:
-			  run: profileprocessing      #  template.metadata.lables field defines a label for the pods that wraps your cotainer
-		spec:
-		  containers:
-			  - name: profileprocessing-c
-				  image: hub.docker.hpecorp.net/208885-entitymdm/profileprocessing:IMAGETAG
-					env:
-					  - name: HTTPS_PROXY
-						  value: http://web-proxy.corp.hpecorp.net:8080
-					  - name: HTTP_PROXY
-						  value: http://web-proxy.corp.hpecorp.net:8080
-						- name: http_proxy
-							value: http://web-proxy.corp.hpecorp.net:8080
-						- name: https_proxy
-							value: http://web-proxy.corp.hpecorp.net:8080
-					ports:
-					  - containerPort: 8081
-						  protocol: TCP
-					resources:
-					    requests:
-							    memory: "4Gi"
-									cpu: "200m"
-							limits:
-							    memory: "4Gi"
-									cpu: "200m"
-					imagePullPolicy: Always
----
-
-						
-		
+  selector:
+     matchlables:
+       run: profileprocessing         # selector.matchlables field selects those pods with that label to belong to  this deployement resource.
+  template:
+    metadata:
+      lables:
+	run: profileprocessing      #  template.metadata.lables field defines a label for the pods that wraps your cotainer
+    spec:
+      containers:
+	- name: profileprocessing-c
+	  image: hub.docker.hpecorp.net/208885-entitymdm/profileprocessing:IMAGETAG
+	  env:
+	    - name: HTTPS_PROXY
+	      value: http://web-proxy.corp.hpecorp.net:8080
+	    - name: HTTP_PROXY
+	      value: http://web-proxy.corp.hpecorp.net:8080
+	    - name: http_proxy
+	      value: http://web-proxy.corp.hpecorp.net:8080
+	    - name: https_proxy
+	      value: http://web-proxy.corp.hpecorp.net:8080
+	  ports:
+	    - containerPort: 8081
+	      protocol: TCP
+	  resources:
+	      requests:
+	          memory: "4Gi"
+		  cpu: "200m"
+	      limits:
+		  memory: "4Gi"
+		  cpu: "200m"
+	  imagePullPolicy: Always
