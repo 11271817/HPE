@@ -1,0 +1,16 @@
+---
+- hosts: windows_server
+  become: sudo
+  var_files:
+    - var_cert_import.yml
+  tasks:
+    - name: Downloading the file from jfrog artifactory
+      win_shell:  |
+        $artifactoryurl = "{{ artifactoryurl }}/{{ filename }}"
+      register: file_download_result
+      until: file_download_result is success
+      retries: 5
+      delay: 5
+    - set_fact:
+         return_filepath: "{{ filepath }}/{{ filename }}"
+    - debug: the file is downloaded successfully at  | "{{ filepath }}"
